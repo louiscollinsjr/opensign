@@ -7,6 +7,10 @@ const mongoose = require('mongoose');
 const morgan = require('morgan');
 const cors = require('cors');
 
+const authRoutes = require('./routes/auth');
+const envelopesRoutes = require('./routes/envelopes');
+const signRoutes = require('./routes/sign');
+
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -27,6 +31,10 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({ service: 'opensign-backend', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
 });
+
+app.use('/api/auth', authRoutes);
+app.use('/api/envelopes', envelopesRoutes);
+app.use('/api/sign', signRoutes);
 
 async function start() {
   try {

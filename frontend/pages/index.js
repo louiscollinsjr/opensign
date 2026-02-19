@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { isLoggedIn } from '../lib/auth';
+
 export default function Home() {
-  return (
-    <main style={{ padding: "3rem", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <h1>Opensign</h1>
-      <p>Frontend scaffold for Vercel. Update NEXT_PUBLIC_API_URL to point at your Fly.io backend.</p>
-    </main>
-  );
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(isLoggedIn() ? '/dashboard' : '/login');
+  }, [router]);
+  return null;
 }
