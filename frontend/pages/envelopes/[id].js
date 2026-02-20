@@ -51,8 +51,8 @@ export default function EnvelopeBuilder() {
       setRecipients(recs);
       setPageCount(env.pageCount || 1);
       setFields(flds.map((f) => ({ ...f, localId: ++fieldIdCounter })));
-      // If already sent, pre-load signing links for the copy-link panel
-      if (env.status === 'sent' || env.status === 'completed') {
+      // Pre-load signing links for any non-draft envelope
+      if (env.status !== 'draft') {
         api.envelopes.links(id).then(({ links }) => setSigningLinks(links)).catch(() => {});
       }
     }).catch((err) => toast.error(err.message));
@@ -111,22 +111,26 @@ export default function EnvelopeBuilder() {
   // Core save: always upserts recipients (backend preserves tokens for existing ones),
   // then saves fields with correctly-mapped recipientIds. Returns the saved fields.
   async function saveAll() {
+    // Snapshot current state before any async calls (avoids stale closure issues)
+    const currentRecipients = recipients;
+    const currentFields = fields;
+
     // Upsert recipients — backend preserves tokens/status for existing emails,
     // creates fresh tokens only for newly added emails
-    const savedRecipients = await api.envelopes.saveRecipients(id, recipients.map((r, i) => ({
+    const savedRecipients = await api.envelopes.saveRecipients(id, currentRecipients.map((r, i) => ({
       name: r.name, email: r.email, order: i,
     })));
     setRecipients(savedRecipients);
 
     // Map local/stale recipientIds → real server _ids by email
     const recipientIdMap = {};
-    recipients.forEach((localR) => {
+    currentRecipients.forEach((localR) => {
       const match = savedRecipients.find((sr) => sr.email === localR.email);
-      if (match) recipientIdMap[localR._id] = match._id;
+      if (match) recipientIdMap[String(localR._id)] = String(match._id);
     });
 
-    const resolvedFields = fields.map((f) => ({
-      recipientId: recipientIdMap[f.recipientId] || f.recipientId,
+    const resolvedFields = currentFields.map((f) => ({
+      recipientId: recipientIdMap[String(f.recipientId)] || String(f.recipientId),
       page: f.page, x: f.x, y: f.y,
       width: f.width, height: f.height,
       type: f.type, required: f.required,
@@ -134,10 +138,10 @@ export default function EnvelopeBuilder() {
 
     const savedFields = await api.envelopes.saveFields(id, resolvedFields);
 
-    // Sync local field state with real server _ids
+    // Sync local field state with real server _ids so future saves stay consistent
     setFields(savedFields.map((sf, i) => ({
       ...resolvedFields[i], ...sf,
-      localId: fields[i]?.localId ?? ++fieldIdCounter,
+      localId: currentFields[i]?.localId ?? ++fieldIdCounter,
     })));
 
     return { savedRecipients, savedFields };
@@ -203,9 +207,10 @@ export default function EnvelopeBuilder() {
   }
 
   async function copyLink(link) {
+    const linkId = String(link.recipientId);
     try {
       await navigator.clipboard.writeText(link.signingUrl);
-      setCopiedId(link.recipientId);
+      setCopiedId(linkId);
       toast.success(`Link copied for ${link.name}`);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
@@ -400,33 +405,40 @@ export default function EnvelopeBuilder() {
             </div>
           </div>
 
-          {/* Signing links — shown once the envelope is sent */}
-          {signingLinks.length > 0 && (
+          {/* Signing links — shown once the envelope is sent or completed */}
+          {(signingLinks.length > 0 || envelope.status !== 'draft') && (
             <div className="border border-gray-200 rounded-lg p-4">
               <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Signing Links</h3>
-              <p className="text-xs text-gray-400 mb-3">Share directly if email fails</p>
+              <p className="text-xs text-gray-400 mb-3">
+                {signingLinks.length === 0 ? 'Send first to generate links' : 'Share directly if email fails'}
+              </p>
               <div className="space-y-2">
-                {signingLinks.map((link) => (
-                  <div key={link.recipientId} className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-gray-900 truncate">{link.name}</p>
-                      <p className={`text-[10px] capitalize ${link.status === 'signed' ? 'text-green-600' : 'text-gray-400'}`}>
-                        {link.status}
-                      </p>
+                {signingLinks.map((link) => {
+                  // Always normalise to string so comparisons work regardless of ObjectId type
+                  const linkId = String(link.recipientId);
+                  const isSigned = link.status === 'signed';
+                  return (
+                    <div key={linkId} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-gray-900 truncate">{link.name}</p>
+                        <p className={`text-[10px] capitalize ${isSigned ? 'text-green-600' : 'text-blue-500 font-medium'}`}>
+                          {isSigned ? '✓ signed' : link.status}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => copyLink({ ...link, recipientId: linkId })}
+                        disabled={isSigned}
+                        className="flex-shrink-0 flex items-center gap-1 border border-gray-200 rounded px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                        title={isSigned ? 'Already signed' : `Copy link for ${link.name}`}
+                      >
+                        {copiedId === linkId
+                          ? <><CheckCircle size={10} className="text-green-600" /> Copied</>
+                          : <><Copy size={10} /> Copy</>
+                        }
+                      </button>
                     </div>
-                    <button
-                      onClick={() => copyLink(link)}
-                      disabled={link.status === 'signed'}
-                      className="flex-shrink-0 flex items-center gap-1 border border-gray-200 rounded px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                      title={link.status === 'signed' ? 'Already signed' : `Copy link for ${link.name}`}
-                    >
-                      {copiedId === link.recipientId
-                        ? <><CheckCircle size={10} className="text-green-600" /> Copied</>
-                        : <><Copy size={10} /> Copy</>
-                      }
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
