@@ -35,6 +35,26 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Lightweight update for mutable envelope fields (currently: pageCount, title)
+router.patch('/:id', async (req, res) => {
+  try {
+    const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });
+    if (!envelope) return res.status(404).json({ error: 'Not found' });
+    if (req.body.pageCount != null) {
+      const n = parseInt(req.body.pageCount, 10);
+      if (!isNaN(n) && n > 0) envelope.pageCount = n;
+    }
+    if (req.body.title != null && req.body.title.trim()) {
+      envelope.title = req.body.title.trim();
+    }
+    await envelope.save();
+    res.json(envelope);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });

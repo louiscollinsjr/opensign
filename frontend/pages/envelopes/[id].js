@@ -51,6 +51,19 @@ export default function EnvelopeBuilder() {
     }).catch((err) => toast.error(err.message));
   }, [id, router]);
 
+  // Called by PdfViewer once the PDF finishes loading in the browser.
+  // If react-pdf reports a different page count than what's stored, patch it silently.
+  const handleNumPages = useCallback((numPages) => {
+    if (!id || !numPages) return;
+    setPageCount(numPages);
+    setEnvelope((prev) => {
+      if (!prev || prev.pageCount === numPages) return prev;
+      // Fire-and-forget — if this fails it's non-critical
+      api.envelopes.patch(id, { pageCount: numPages }).catch(() => {});
+      return { ...prev, pageCount: numPages };
+    });
+  }, [id]);
+
   function handleOverlayClick(e) {
     if (!overlayRef.current || recipients.length === 0) return;
     const rect = overlayRef.current.getBoundingClientRect();
@@ -201,6 +214,7 @@ export default function EnvelopeBuilder() {
                 url={envelope.pdfUrl}
                 page={page}
                 onDimsChange={setPdfDims}
+                onNumPages={handleNumPages}
               />
               {/* Clickable overlay for placing fields */}
               <div

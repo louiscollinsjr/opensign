@@ -5,7 +5,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
-export default function PdfViewer({ url, page, onDimsChange }) {
+export default function PdfViewer({ url, page, onDimsChange, onNumPages }) {
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(600);
 
@@ -26,6 +26,10 @@ export default function PdfViewer({ url, page, onDimsChange }) {
     }
   }
 
+  function handleLoadSuccess({ numPages }) {
+    if (onNumPages) onNumPages(numPages);
+  }
+
   if (!url) {
     return (
       <div className="flex items-center justify-center h-96 text-sm text-gray-400">
@@ -38,6 +42,7 @@ export default function PdfViewer({ url, page, onDimsChange }) {
     <div ref={containerRef} className="w-full">
       <Document
         file={url}
+        onLoadSuccess={handleLoadSuccess}
         loading={
           <div className="flex items-center justify-center h-96 text-sm text-gray-400">
             Loading PDF…
