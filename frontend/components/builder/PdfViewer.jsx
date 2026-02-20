@@ -3,7 +3,11 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Use the self-hosted worker copied to /public at build time.
+// This avoids unpkg CDN CORS issues and version mismatches.
+// The file is copied from react-pdf's own nested pdfjs-dist by the
+// "copy-worker" npm script in package.json.
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 export default function PdfViewer({ url, page, onDimsChange, onNumPages }) {
   const containerRef = useRef(null);
