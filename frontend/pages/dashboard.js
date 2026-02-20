@@ -37,12 +37,13 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [router]);
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this draft?')) return;
+  async function handleDelete(env) {
+    const label = env.status === 'draft' ? 'draft' : env.status === 'completed' ? 'completed document' : 'sent document';
+    if (!confirm(`Delete this ${label}? This cannot be undone.`)) return;
     try {
-      await api.envelopes.delete(id);
-      setEnvelopes((prev) => prev.filter((e) => e._id !== id));
-      toast.success('Draft deleted');
+      await api.envelopes.delete(env._id);
+      setEnvelopes((prev) => prev.filter((e) => e._id !== env._id));
+      toast.success('Document deleted');
     } catch (err) {
       toast.error(err.message);
     }
@@ -138,15 +139,13 @@ export default function Dashboard() {
                           <Download size={14} />
                         </button>
                       )}
-                      {env.status === 'draft' && (
-                        <button
-                          onClick={() => handleDelete(env._id)}
-                          className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded"
-                          title="Delete draft"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDelete(env)}
+                        className="text-gray-400 hover:text-red-600 transition-colors p-1 rounded"
+                        title="Delete document"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>

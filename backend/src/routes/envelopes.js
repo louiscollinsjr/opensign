@@ -72,9 +72,6 @@ router.delete('/:id', async (req, res) => {
   try {
     const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });
     if (!envelope) return res.status(404).json({ error: 'Not found' });
-    if (envelope.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft envelopes can be deleted' });
-    }
     await Field.deleteMany({ envelopeId: envelope._id });
     await Recipient.deleteMany({ envelopeId: envelope._id });
     await envelope.deleteOne();
