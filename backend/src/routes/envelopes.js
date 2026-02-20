@@ -134,6 +134,19 @@ router.put('/:id/fields', async (req, res) => {
     if (!envelope) return res.status(404).json({ error: 'Not found' });
     const { fields } = req.body;
     if (!Array.isArray(fields)) return res.status(400).json({ error: 'fields must be an array' });
+
+    // Validate that every recipientId actually belongs to this envelope
+    const envRecipients = await Recipient.find({ envelopeId: envelope._id });
+    const validRecipientIds = new Set(envRecipients.map((r) => r._id.toString()));
+
+    const invalidFields = fields.filter((f) => !validRecipientIds.has(f.recipientId?.toString()));
+    if (invalidFields.length > 0) {
+      const badIds = [...new Set(invalidFields.map((f) => f.recipientId))];
+      return res.status(400).json({
+        error: `recipientId not found in this envelope: ${badIds.join(', ')}`,
+      });
+    }
+
     await Field.deleteMany({ envelopeId: envelope._id });
     const created = await Field.insertMany(
       fields.map((f) => ({

@@ -111,20 +111,35 @@ export default function EnvelopeBuilder() {
   async function handleSave() {
     setSaving(true);
     try {
+      // Always reload current recipients from server first so we have the real MongoDB _ids
+      const freshData = await api.envelopes.get(id);
+      const serverRecipients = freshData.recipients;
+
       let recipientIdMap = {};
 
       if (envelope.status === 'draft') {
-        // In draft: replace recipients (this regenerates tokens, which is fine pre-send)
+        // In draft: replace recipients (this regenerates tokens, which is fine pre-send).
+        // Build a map from local/stale _id → server _id by matching on email.
         const savedRecipients = await api.envelopes.saveRecipients(id, recipients.map((r, i) => ({
           name: r.name, email: r.email, order: i,
         })));
         setRecipients(savedRecipients);
-        recipients.forEach((r, i) => { if (savedRecipients[i]) recipientIdMap[r._id] = savedRecipients[i]._id; });
-      }
-      // After send: skip saveRecipients to preserve existing tokens/signing links.
-      // Fields are still saved so layout changes are reflected.
 
-      await api.envelopes.saveFields(id, fields.map((f) => ({
+        // Map by email: stale local/old ID → new server ID
+        recipients.forEach((localR) => {
+          const match = savedRecipients.find((sr) => sr.email === localR.email);
+          if (match) recipientIdMap[localR._id] = match._id;
+        });
+      } else {
+        // Post-send: recipients are stable — just build an email→_id map for any local IDs
+        recipients.forEach((localR) => {
+          const match = serverRecipients.find((sr) => sr.email === localR.email);
+          if (match) recipientIdMap[localR._id] = match._id;
+        });
+      }
+
+      // Resolve each field's recipientId to a real server ID
+      const resolvedFields = fields.map((f) => ({
         recipientId: recipientIdMap[f.recipientId] || f.recipientId,
         page: f.page,
         x: f.x,
@@ -133,7 +148,17 @@ export default function EnvelopeBuilder() {
         height: f.height,
         type: f.type,
         required: f.required,
+      }));
+
+      const savedFields = await api.envelopes.saveFields(id, resolvedFields);
+
+      // Update local field state with real server _ids so future saves stay consistent
+      setFields(savedFields.map((sf, i) => ({
+        ...resolvedFields[i],
+        ...sf,
+        localId: fields[i]?.localId ?? ++fieldIdCounter,
       })));
+
       toast.success('Saved');
     } catch (err) {
       toast.error(err.message);
