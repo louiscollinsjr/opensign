@@ -65,7 +65,11 @@ export default function EnvelopeBuilder() {
   }, [id]);
 
   function handleOverlayClick(e) {
-    if (!overlayRef.current || recipients.length === 0) return;
+    if (!overlayRef.current) return;
+    if (recipients.length === 0) {
+      toast.error('Add a recipient first, then click to place a field');
+      return;
+    }
     const rect = overlayRef.current.getBoundingClientRect();
     const xPct = (e.clientX - rect.left) / rect.width;
     const yPct = (e.clientY - rect.top) / rect.height;
@@ -210,12 +214,15 @@ export default function EnvelopeBuilder() {
           {/* PDF viewer with overlay */}
           <div className="flex-1 border border-gray-200 rounded-lg overflow-auto bg-gray-50 relative">
             <div className="relative inline-block" style={{ minWidth: '100%' }}>
-              <PdfViewer
-                url={envelope.pdfUrl}
-                page={page}
-                onDimsChange={setPdfDims}
-                onNumPages={handleNumPages}
-              />
+              {/* pointer-events:none lets clicks pass through the PDF canvas to the overlay */}
+              <div style={{ pointerEvents: 'none' }}>
+                <PdfViewer
+                  url={envelope.pdfUrl}
+                  page={page}
+                  onDimsChange={setPdfDims}
+                  onNumPages={handleNumPages}
+                />
+              </div>
               {/* Clickable overlay for placing fields */}
               <div
                 ref={overlayRef}
