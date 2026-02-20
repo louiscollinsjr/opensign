@@ -170,18 +170,61 @@ router.post('/:id/send', async (req, res) => {
       return res.status(400).json({ error: 'No recipients added' });
     }
     const baseUrl = process.env.FRONTEND_URL || 'https://opensign.atem.gdn';
+    const emailErrors = [];
     for (const recipient of recipients) {
       const signingUrl = `${baseUrl}/sign/${recipient.token}`;
-      await sendSigningInvite({
-        recipientName: recipient.name,
-        recipientEmail: recipient.email,
-        envelopeTitle: envelope.title,
-        signingUrl,
-      });
+      try {
+        const result = await sendSigningInvite({
+          recipientName: recipient.name,
+          recipientEmail: recipient.email,
+          envelopeTitle: envelope.title,
+          signingUrl,
+        });
+        // Resend returns { data: { id }, error: null } on success
+        if (result.error) {
+          console.error(`[send] Resend error for ${recipient.email}:`, result.error);
+          emailErrors.push({ email: recipient.email, error: result.error.message || JSON.stringify(result.error) });
+        } else {
+          console.log(`[send] Email sent to ${recipient.email}, id: ${result.data?.id}`);
+        }
+      } catch (emailErr) {
+        console.error(`[send] Failed to send email to ${recipient.email}:`, emailErr.message);
+        emailErrors.push({ email: recipient.email, error: emailErr.message });
+      }
     }
     envelope.status = 'sent';
     await envelope.save();
-    res.json({ ok: true, status: 'sent', recipientCount: recipients.length });
+    res.json({
+      ok: true,
+      status: 'sent',
+      recipientCount: recipients.length,
+      emailErrors: emailErrors.length ? emailErrors : undefined,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Return per-recipient signing URLs — used by "Copy link" so the owner can
+// share links manually without relying on email delivery.
+router.get('/:id/links', async (req, res) => {
+  try {
+    const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });
+    if (!envelope) return res.status(404).json({ error: 'Not found' });
+    if (envelope.status === 'draft') {
+      return res.status(400).json({ error: 'Document has not been sent yet' });
+    }
+    const recipients = await Recipient.find({ envelopeId: envelope._id }).sort({ order: 1 });
+    const baseUrl = process.env.FRONTEND_URL || 'https://opensign.atem.gdn';
+    const links = recipients.map((r) => ({
+      recipientId: r._id,
+      name: r.name,
+      email: r.email,
+      status: r.status,
+      signingUrl: `${baseUrl}/sign/${r.token}`,
+    }));
+    res.json({ links });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

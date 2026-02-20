@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { toast } from 'sonner';
-import { Send, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Plus, Trash2, ChevronLeft, ChevronRight, Link, Copy, CheckCircle } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
 import { api } from '../../lib/api';
 import { isLoggedIn } from '../../lib/auth';
@@ -37,6 +37,8 @@ export default function EnvelopeBuilder() {
   const [pdfDims, setPdfDims] = useState({ width: 0, height: 0 });
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [signingLinks, setSigningLinks] = useState([]); // populated after send
+  const [copiedId, setCopiedId] = useState(null); // tracks which link was just copied
   const [newRecipient, setNewRecipient] = useState({ name: '', email: '' });
   const overlayRef = useRef(null);
 
@@ -48,6 +50,10 @@ export default function EnvelopeBuilder() {
       setRecipients(recs);
       setPageCount(env.pageCount || 1);
       setFields(flds.map((f) => ({ ...f, localId: ++fieldIdCounter })));
+      // If already sent, pre-load signing links for the copy-link panel
+      if (env.status === 'sent' || env.status === 'completed') {
+        api.envelopes.links(id).then(({ links }) => setSigningLinks(links)).catch(() => {});
+      }
     }).catch((err) => toast.error(err.message));
   }, [id, router]);
 
@@ -134,13 +140,32 @@ export default function EnvelopeBuilder() {
     setSending(true);
     try {
       await handleSave();
-      await api.envelopes.send(id);
-      toast.success('Document sent for signature!');
-      router.push('/dashboard');
+      const result = await api.envelopes.send(id);
+      // Fetch signing links so the owner can copy them manually
+      const { links } = await api.envelopes.links(id);
+      setSigningLinks(links);
+      setEnvelope((prev) => ({ ...prev, status: 'sent' }));
+      if (result.emailErrors?.length) {
+        toast.warning(`Sent, but ${result.emailErrors.length} email(s) failed — use Copy Link below`);
+      } else {
+        toast.success('Document sent! Emails delivered.');
+      }
     } catch (err) {
       toast.error(err.message);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function copyLink(link) {
+    try {
+      await navigator.clipboard.writeText(link.signingUrl);
+      setCopiedId(link.recipientId);
+      toast.success(`Link copied for ${link.name}`);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Fallback: show the URL in a prompt so the user can copy manually
+      window.prompt(`Copy this link for ${link.name}:`, link.signingUrl);
     }
   }
 
@@ -317,6 +342,37 @@ export default function EnvelopeBuilder() {
               </button>
             </div>
           </div>
+
+          {/* Signing links — shown once the envelope is sent */}
+          {signingLinks.length > 0 && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Signing Links</h3>
+              <p className="text-xs text-gray-400 mb-3">Share directly if email fails</p>
+              <div className="space-y-2">
+                {signingLinks.map((link) => (
+                  <div key={link.recipientId} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-900 truncate">{link.name}</p>
+                      <p className={`text-[10px] capitalize ${link.status === 'signed' ? 'text-green-600' : 'text-gray-400'}`}>
+                        {link.status}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => copyLink(link)}
+                      disabled={link.status === 'signed'}
+                      className="flex-shrink-0 flex items-center gap-1 border border-gray-200 rounded px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      title={link.status === 'signed' ? 'Already signed' : `Copy link for ${link.name}`}
+                    >
+                      {copiedId === link.recipientId
+                        ? <><CheckCircle size={10} className="text-green-600" /> Copied</>
+                        : <><Copy size={10} /> Copy</>
+                      }
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Field properties */}
           {selectedFieldData && (

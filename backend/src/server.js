@@ -44,13 +44,12 @@ async function start() {
       console.log(`Server listening on port ${PORT}`);
     });
 
-    const shutdown = () => {
+    const shutdown = async () => {
       console.log('Shutting down...');
-      server.close(() => {
-        mongoose.connection.close(false, () => {
-          process.exit(0);
-        });
-      });
+      server.close();
+      // Mongoose v8: close() no longer accepts a callback — use the promise form
+      await mongoose.connection.close();
+      process.exit(0);
     };
 
     process.on('SIGINT', shutdown);

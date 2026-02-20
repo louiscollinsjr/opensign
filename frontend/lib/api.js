@@ -44,6 +44,7 @@ export const api = {
       request(`/api/envelopes/${id}/fields`, { method: 'PUT', body: JSON.stringify({ fields }) }),
     patch: (id, body) => request(`/api/envelopes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     send: (id) => request(`/api/envelopes/${id}/send`, { method: 'POST' }),
+    links: (id) => request(`/api/envelopes/${id}/links`),
     download: (id) => request(`/api/envelopes/${id}/download`),
   },
   sign: {

@@ -1,6 +1,6 @@
 const { Resend } = require('resend');
 
-const FROM = 'Opensign <noreply@atem.gdn>';
+const FROM = 'Opensign <noreply@send.atem.gdn>';
 
 function getClient() {
   return new Resend(process.env.RESEND_API_KEY);
