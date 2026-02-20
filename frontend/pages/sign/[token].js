@@ -214,9 +214,6 @@ function SignerFieldOverlay({ field, value, onChange }) {
           zIndex: 20,
         }}
       >
-        {/* Left-justified type label above the field */}
-        <FieldLabel type={field.type} required={field.required} />
-
         {value ? (
           /* Filled state — solid border, value displayed */
           <div
@@ -239,7 +236,7 @@ function SignerFieldOverlay({ field, value, onChange }) {
             )}
           </div>
         ) : (
-          /* Empty state: transparent top area + solid blue bottom band inside the border */
+          /* Empty state: type label top-left + transparent middle + solid blue bottom band */
           <div
             onClick={() => setShowInput(true)}
             style={{
@@ -255,9 +252,18 @@ function SignerFieldOverlay({ field, value, onChange }) {
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(191,219,254,0.45)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(219,234,254,0.30)'; }}
           >
-            {/* Top area — transparent so PDF text shows through */}
+            {/* Top row: type label left-aligned inside the box */}
+            <div style={{ flexShrink: 0, padding: '2px 5px 0' }}>
+              <span style={{
+                fontSize: '8px', fontWeight: 700, letterSpacing: '0.05em',
+                color: '#3b82f6', textTransform: 'uppercase', whiteSpace: 'nowrap',
+              }}>
+                {field.type}{field.required ? ' *' : ''}
+              </span>
+            </div>
+            {/* Middle: transparent so PDF text shows through */}
             <div style={{ flex: 1 }} />
-            {/* Bottom band — solid blue, aligns its bottom edge with the PDF signature line */}
+            {/* Bottom band — solid blue, bottom edge aligns with the PDF signature line */}
             <div style={{
               flexShrink: 0,
               height: '40%',

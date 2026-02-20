@@ -110,18 +110,68 @@ router.put('/:id/recipients', async (req, res) => {
     if (!envelope) return res.status(404).json({ error: 'Not found' });
     const { recipients } = req.body;
     if (!Array.isArray(recipients)) return res.status(400).json({ error: 'recipients must be an array' });
-    await Recipient.deleteMany({ envelopeId: envelope._id });
-    const created = await Recipient.insertMany(
-      recipients.map((r, i) => ({
-        envelopeId: envelope._id,
-        name: r.name,
-        email: r.email,
-        order: r.order ?? i,
-        token: uuidv4(),
-        status: 'pending',
-      }))
-    );
-    res.json(created);
+
+    if (envelope.status === 'draft') {
+      // Draft: safe to delete-and-recreate, tokens haven't been sent yet
+      await Recipient.deleteMany({ envelopeId: envelope._id });
+      const created = await Recipient.insertMany(
+        recipients.map((r, i) => ({
+          envelopeId: envelope._id,
+          name: r.name,
+          email: r.email,
+          order: r.order ?? i,
+          token: uuidv4(),
+          status: 'pending',
+        }))
+      );
+      return res.json(created);
+    }
+
+    // Sent/completed: upsert by email so existing tokens and signed status are preserved.
+    // New emails get fresh tokens; removed emails get their records deleted.
+    const existing = await Recipient.find({ envelopeId: envelope._id });
+    const existingByEmail = {};
+    existing.forEach((r) => { existingByEmail[r.email.toLowerCase()] = r; });
+
+    const incomingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
+
+    // Delete recipients that were removed from the list
+    const toDelete = existing.filter((r) => !incomingEmails.has(r.email.toLowerCase()));
+    if (toDelete.length) {
+      await Recipient.deleteMany({ _id: { $in: toDelete.map((r) => r._id) } });
+    }
+
+    // Upsert each incoming recipient
+    const result = [];
+    for (let i = 0; i < recipients.length; i++) {
+      const r = recipients[i];
+      const key = r.email.toLowerCase();
+      if (existingByEmail[key]) {
+        // Existing recipient — update name/order only, keep token + status
+        existingByEmail[key].name = r.name;
+        existingByEmail[key].order = r.order ?? i;
+        await existingByEmail[key].save();
+        result.push(existingByEmail[key]);
+      } else {
+        // New recipient — create with fresh token, reset envelope so they get invited
+        const created = await Recipient.create({
+          envelopeId: envelope._id,
+          name: r.name,
+          email: r.email,
+          order: r.order ?? i,
+          token: uuidv4(),
+          status: 'pending',
+        });
+        result.push(created);
+        // If envelope was completed, re-open it so the new signer can sign
+        if (envelope.status === 'completed') {
+          envelope.status = 'sent';
+          await envelope.save();
+        }
+      }
+    }
+
+    res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -172,10 +222,6 @@ router.post('/:id/send', async (req, res) => {
   try {
     const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });
     if (!envelope) return res.status(404).json({ error: 'Not found' });
-    // Allow resend when status is 'sent' (e.g. if email failed). Block only 'completed'.
-    if (envelope.status === 'completed') {
-      return res.status(400).json({ error: 'Envelope is already completed' });
-    }
     if (!envelope.pdfUrl) {
       return res.status(400).json({ error: 'No PDF uploaded yet' });
     }
@@ -183,10 +229,8 @@ router.post('/:id/send', async (req, res) => {
     if (!recipients.length) {
       return res.status(400).json({ error: 'No recipients added' });
     }
-    // On resend, only email recipients who haven't signed yet
-    const pendingRecipients = envelope.status === 'sent'
-      ? recipients.filter((r) => r.status !== 'signed')
-      : recipients;
+    // Only email recipients who haven't signed yet (on first send all are pending)
+    const pendingRecipients = recipients.filter((r) => r.status !== 'signed');
     const baseUrl = process.env.FRONTEND_URL || 'https://opensign-app.vercel.app';
     const emailErrors = [];
     for (const recipient of pendingRecipients) {
@@ -210,12 +254,15 @@ router.post('/:id/send', async (req, res) => {
         emailErrors.push({ email: recipient.email, error: emailErr.message });
       }
     }
-    envelope.status = 'sent';
-    await envelope.save();
+    // Re-open completed envelopes when owner resends
+    if (envelope.status !== 'sent') {
+      envelope.status = 'sent';
+      await envelope.save();
+    }
     res.json({
       ok: true,
       status: 'sent',
-      recipientCount: recipients.length,
+      recipientCount: pendingRecipients.length,
       emailErrors: emailErrors.length ? emailErrors : undefined,
     });
   } catch (err) {

@@ -108,57 +108,45 @@ export default function EnvelopeBuilder() {
     setFields((prev) => prev.map((f) => f.localId === localId ? { ...f, ...updates } : f));
   }
 
+  // Core save: always upserts recipients (backend preserves tokens for existing ones),
+  // then saves fields with correctly-mapped recipientIds. Returns the saved fields.
+  async function saveAll() {
+    // Upsert recipients — backend preserves tokens/status for existing emails,
+    // creates fresh tokens only for newly added emails
+    const savedRecipients = await api.envelopes.saveRecipients(id, recipients.map((r, i) => ({
+      name: r.name, email: r.email, order: i,
+    })));
+    setRecipients(savedRecipients);
+
+    // Map local/stale recipientIds → real server _ids by email
+    const recipientIdMap = {};
+    recipients.forEach((localR) => {
+      const match = savedRecipients.find((sr) => sr.email === localR.email);
+      if (match) recipientIdMap[localR._id] = match._id;
+    });
+
+    const resolvedFields = fields.map((f) => ({
+      recipientId: recipientIdMap[f.recipientId] || f.recipientId,
+      page: f.page, x: f.x, y: f.y,
+      width: f.width, height: f.height,
+      type: f.type, required: f.required,
+    }));
+
+    const savedFields = await api.envelopes.saveFields(id, resolvedFields);
+
+    // Sync local field state with real server _ids
+    setFields(savedFields.map((sf, i) => ({
+      ...resolvedFields[i], ...sf,
+      localId: fields[i]?.localId ?? ++fieldIdCounter,
+    })));
+
+    return { savedRecipients, savedFields };
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
-      // Always reload current recipients from server first so we have the real MongoDB _ids
-      const freshData = await api.envelopes.get(id);
-      const serverRecipients = freshData.recipients;
-
-      let recipientIdMap = {};
-
-      if (envelope.status === 'draft') {
-        // In draft: replace recipients (this regenerates tokens, which is fine pre-send).
-        // Build a map from local/stale _id → server _id by matching on email.
-        const savedRecipients = await api.envelopes.saveRecipients(id, recipients.map((r, i) => ({
-          name: r.name, email: r.email, order: i,
-        })));
-        setRecipients(savedRecipients);
-
-        // Map by email: stale local/old ID → new server ID
-        recipients.forEach((localR) => {
-          const match = savedRecipients.find((sr) => sr.email === localR.email);
-          if (match) recipientIdMap[localR._id] = match._id;
-        });
-      } else {
-        // Post-send: recipients are stable — just build an email→_id map for any local IDs
-        recipients.forEach((localR) => {
-          const match = serverRecipients.find((sr) => sr.email === localR.email);
-          if (match) recipientIdMap[localR._id] = match._id;
-        });
-      }
-
-      // Resolve each field's recipientId to a real server ID
-      const resolvedFields = fields.map((f) => ({
-        recipientId: recipientIdMap[f.recipientId] || f.recipientId,
-        page: f.page,
-        x: f.x,
-        y: f.y,
-        width: f.width,
-        height: f.height,
-        type: f.type,
-        required: f.required,
-      }));
-
-      const savedFields = await api.envelopes.saveFields(id, resolvedFields);
-
-      // Update local field state with real server _ids so future saves stay consistent
-      setFields(savedFields.map((sf, i) => ({
-        ...resolvedFields[i],
-        ...sf,
-        localId: fields[i]?.localId ?? ++fieldIdCounter,
-      })));
-
+      await saveAll();
       toast.success('Saved');
     } catch (err) {
       toast.error(err.message);
@@ -172,7 +160,7 @@ export default function EnvelopeBuilder() {
     if (fields.length === 0) return toast.error('Add at least one field');
     setSending(true);
     try {
-      await handleSave();
+      await saveAll();
       const result = await api.envelopes.send(id);
       // Fetch signing links so the owner can copy them manually
       const { links } = await api.envelopes.links(id);
@@ -194,17 +182,14 @@ export default function EnvelopeBuilder() {
     if (recipients.length === 0) return toast.error('No recipients');
     setResending(true);
     try {
-      // Save field layout without touching recipients/tokens
-      await api.envelopes.saveFields(id, fields.map((f) => ({
-        recipientId: f.recipientId,
-        page: f.page, x: f.x, y: f.y,
-        width: f.width, height: f.height,
-        type: f.type, required: f.required,
-      })));
-      // Re-send emails to all pending recipients
+      // Save recipients + fields (upserts new recipients, preserves existing tokens)
+      await saveAll();
+      // Re-send emails to all unsigned recipients (backend filters by status !== 'signed')
       const result = await api.envelopes.send(id);
       const { links } = await api.envelopes.links(id);
       setSigningLinks(links);
+      // Backend re-opens completed envelopes to 'sent'
+      setEnvelope((prev) => ({ ...prev, status: 'sent' }));
       if (result.emailErrors?.length) {
         toast.warning(`Resent, but ${result.emailErrors.length} email(s) failed — use Copy Link below`);
       } else {
@@ -271,21 +256,16 @@ export default function EnvelopeBuilder() {
           <Send size={13} />
           {sending ? 'Sending…' : 'Send'}
         </button>
-      ) : envelope.status === 'sent' ? (
+      ) : (
         <button
           onClick={handleResend}
           disabled={resending}
           className="inline-flex items-center gap-1.5 bg-gray-700 text-white rounded-md px-3 py-1.5 text-sm font-medium hover:bg-gray-600 disabled:opacity-50 transition-colors"
-          title="Re-send invitation emails to all recipients"
+          title="Add recipients, edit fields, then resend"
         >
           <Send size={13} />
           {resending ? 'Resending…' : 'Resend'}
         </button>
-      ) : (
-        <span className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 rounded-md px-3 py-1.5 text-sm font-medium">
-          <Send size={13} />
-          Completed
-        </span>
       )}
     </div>
   );
@@ -552,23 +532,7 @@ function FieldBox({ field, selected, onSelect, onRemove, onUpdate, recipient }) 
         userSelect: 'none',
       }}
     >
-      {/* Left-justified label above — type · recipient */}
-      <span style={{
-        position: 'absolute',
-        top: '-1.15em',
-        left: 0,
-        fontSize: '9px',
-        fontWeight: 600,
-        letterSpacing: '0.04em',
-        color: selected ? '#1e3a8a' : '#1e40af',
-        textTransform: 'uppercase',
-        whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-      }}>
-        {field.type}{recipient ? ` · ${recipient.name}` : ''}
-      </span>
-
-      {/* Field body: transparent top + solid blue bottom band */}
+      {/* Field body: label top-left + transparent middle + solid blue bottom band */}
       <div style={{
         width: '100%',
         height: '100%',
@@ -583,9 +547,19 @@ function FieldBox({ field, selected, onSelect, onRemove, onUpdate, recipient }) 
         boxSizing: 'border-box',
         pointerEvents: 'none',
       }}>
-        {/* Top: transparent so PDF text shows through */}
+        {/* Top row: field type left-aligned inside the box */}
+        <div style={{ flexShrink: 0, padding: '2px 5px 0' }}>
+          <span style={{
+            fontSize: '8px', fontWeight: 700, letterSpacing: '0.05em',
+            color: selected ? '#1e3a8a' : '#3b82f6',
+            textTransform: 'uppercase', whiteSpace: 'nowrap',
+          }}>
+            {field.type}{recipient ? ` · ${recipient.name}` : ''}
+          </span>
+        </div>
+        {/* Middle: transparent so PDF text shows through */}
         <div style={{ flex: 1 }} />
-        {/* Bottom band: solid blue with yellow "Sign here" text */}
+        {/* Bottom band: solid blue with yellow label */}
         <div style={{
           flexShrink: 0,
           height: '40%',
