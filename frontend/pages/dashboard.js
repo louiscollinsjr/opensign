@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Plus, FileText, Trash2 } from 'lucide-react';
+import { Plus, FileText, Trash2, Download } from 'lucide-react';
 import AppShell from '../components/layout/AppShell';
 import { api } from '../lib/api';
 import { isLoggedIn } from '../lib/auth';
@@ -24,6 +24,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(null); // track which envelope is being downloaded
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -44,6 +45,25 @@ export default function Dashboard() {
       toast.success('Draft deleted');
     } catch (err) {
       toast.error(err.message);
+    }
+  }
+
+  async function handleDownload(env) {
+    setDownloading(env._id);
+    try {
+      const { signedPdfUrl } = await api.envelopes.download(env._id);
+      // Trigger a browser download by creating a temporary anchor
+      const a = document.createElement('a');
+      a.href = signedPdfUrl;
+      a.download = `${env.title} (signed).pdf`;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      toast.error(err.message || 'Could not download signed PDF');
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -107,15 +127,27 @@ export default function Dashboard() {
                     {new Date(env.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {env.status === 'draft' && (
-                      <button
-                        onClick={() => handleDelete(env._id)}
-                        className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded"
-                        title="Delete draft"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    <div className="flex items-center justify-end gap-1">
+                      {env.status === 'completed' && (
+                        <button
+                          onClick={() => handleDownload(env)}
+                          disabled={downloading === env._id}
+                          className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded disabled:opacity-40"
+                          title="Download signed PDF"
+                        >
+                          <Download size={14} />
+                        </button>
+                      )}
+                      {env.status === 'draft' && (
+                        <button
+                          onClick={() => handleDelete(env._id)}
+                          className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded"
+                          title="Delete draft"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

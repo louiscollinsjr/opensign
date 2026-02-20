@@ -3,6 +3,8 @@ const Recipient = require('../models/Recipient');
 const Envelope = require('../models/Envelope');
 const Field = require('../models/Field');
 const { sendCompletionNotice } = require('../lib/resend');
+const { uploadPdf } = require('../lib/blob');
+const { embedSignatures } = require('../lib/pdfSigner');
 const User = require('../models/User');
 
 const router = express.Router();
@@ -41,26 +43,48 @@ router.post('/:token', async (req, res) => {
     }
     const { values } = req.body;
     if (!Array.isArray(values)) return res.status(400).json({ error: 'values must be an array' });
+
+    // Save each field value
     for (const v of values) {
       await Field.findByIdAndUpdate(v.fieldId, { value: v.value });
     }
+
     recipient.status = 'signed';
     recipient.signedAt = new Date();
     await recipient.save();
+
     const allRecipients = await Recipient.find({ envelopeId: envelope._id });
     const allSigned = allRecipients.every((r) => r.status === 'signed');
+
     if (allSigned) {
       envelope.status = 'completed';
+
+      // Generate the signed PDF and store it in Vercel Blob
+      try {
+        const allFields = await Field.find({ envelopeId: envelope._id });
+        const signedBytes = await embedSignatures(envelope.pdfUrl, allFields);
+        const signedFilename = `envelopes/${envelope._id}/signed-${Date.now()}.pdf`;
+        const { url, key } = await uploadPdf(signedFilename, Buffer.from(signedBytes));
+        envelope.signedPdfUrl = url;
+        envelope.signedPdfKey = key;
+      } catch (pdfErr) {
+        // Don't block completion if PDF generation fails — log and continue
+        console.error('[sign] Failed to generate signed PDF:', pdfErr.message);
+      }
+
       await envelope.save();
+
       const owner = await User.findById(envelope.ownerId);
       if (owner) {
         await sendCompletionNotice({
           ownerEmail: owner.email,
           ownerName: owner.name,
           envelopeTitle: envelope.title,
+          signedPdfUrl: envelope.signedPdfUrl,
         });
       }
     }
+
     res.json({ ok: true, allSigned });
   } catch (err) {
     console.error(err);

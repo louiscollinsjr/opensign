@@ -1,11 +1,23 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { toast } from 'sonner';
 import { Upload, FileText } from 'lucide-react';
 import AppShell from '../../components/layout/AppShell';
 import { api } from '../../lib/api';
 import { isLoggedIn } from '../../lib/auth';
-import { useEffect } from 'react';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+
+// Reuse the same worker the PdfViewer already loads
+if (typeof window !== 'undefined') {
+  const pdfjsVersion = require('pdfjs-dist/package.json').version;
+  GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.js`;
+}
+
+async function getPdfPageCount(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await getDocument({ data: arrayBuffer }).promise;
+  return pdf.numPages;
+}
 
 export default function NewEnvelope() {
   const router = useRouter();
@@ -45,9 +57,12 @@ export default function NewEnvelope() {
     if (!title.trim()) return toast.error('Please enter a title');
     setLoading(true);
     try {
+      // Detect page count before uploading so multi-page PDFs work correctly
+      const pageCount = await getPdfPageCount(file);
       const envelope = await api.envelopes.create({ title: title.trim() });
       const formData = new FormData();
       formData.append('pdf', file);
+      formData.append('pageCount', String(pageCount));
       await api.envelopes.upload(envelope._id, formData);
       toast.success('Document created');
       router.push(`/envelopes/${envelope._id}`);

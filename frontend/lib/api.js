@@ -43,6 +43,7 @@ export const api = {
     saveFields: (id, fields) =>
       request(`/api/envelopes/${id}/fields`, { method: 'PUT', body: JSON.stringify({ fields }) }),
     send: (id) => request(`/api/envelopes/${id}/send`, { method: 'POST' }),
+    download: (id) => request(`/api/envelopes/${id}/download`),
   },
   sign: {
     get: (token) => request(`/api/sign/${token}`),

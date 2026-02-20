@@ -168,4 +168,22 @@ router.post('/:id/send', async (req, res) => {
   }
 });
 
+// Return the signed PDF URL for a completed envelope so the frontend can trigger a browser download
+router.get('/:id/download', async (req, res) => {
+  try {
+    const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });
+    if (!envelope) return res.status(404).json({ error: 'Not found' });
+    if (envelope.status !== 'completed') {
+      return res.status(400).json({ error: 'Document is not yet complete' });
+    }
+    if (!envelope.signedPdfUrl) {
+      return res.status(404).json({ error: 'Signed PDF not available yet' });
+    }
+    res.json({ signedPdfUrl: envelope.signedPdfUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -8,6 +8,8 @@ const envelopeSchema = new mongoose.Schema(
     pdfUrl: { type: String, default: null },
     pdfKey: { type: String, default: null },
     pageCount: { type: Number, default: 1 },
+    signedPdfUrl: { type: String, default: null },
+    signedPdfKey: { type: String, default: null },
   },
   { timestamps: true }
 );

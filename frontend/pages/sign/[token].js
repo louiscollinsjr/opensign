@@ -159,8 +159,8 @@ export default function SignPage() {
                     className="flex items-center gap-2 text-xs cursor-pointer hover:text-gray-900 transition-colors"
                   >
                     <div className={`w-3.5 h-3.5 rounded-full border flex-shrink-0 ${filled ? 'bg-gray-900 border-gray-900' : 'border-gray-300'}`} />
-                    <span className={`capitalize ${filled ? 'text-gray-500 line-through' : 'text-gray-700'}`}>
-                      {f.type} {f.required ? '' : '(optional)'}
+                    <span className={`capitalize ${filled ? 'text-gray-500' : 'text-gray-700'}`}>
+                      {filled ? '✓ ' : ''}{f.type}{!f.required ? ' (optional)' : ''}
                     </span>
                   </div>
                 );
@@ -176,6 +176,7 @@ export default function SignPage() {
 function SignerFieldOverlay({ field, value, onChange }) {
   const [showInput, setShowInput] = useState(false);
   const isSignature = field.type === 'signature' || field.type === 'initials';
+  const isDataUrl = value && value.startsWith('data:');
 
   return (
     <div
@@ -191,9 +192,14 @@ function SignerFieldOverlay({ field, value, onChange }) {
       {value ? (
         <div
           onClick={() => setShowInput(true)}
-          className="w-full h-full border-2 border-gray-900 bg-white rounded flex items-center justify-center cursor-pointer hover:bg-gray-50"
+          className="w-full h-full border-2 border-gray-900 bg-white rounded flex items-center justify-center cursor-pointer hover:bg-gray-50 overflow-hidden"
         >
-          <span className="text-xs text-gray-900 px-1 truncate font-medium">{value}</span>
+          {isDataUrl ? (
+            // Render drawn signatures/initials as an image
+            <img src={value} alt={field.type} className="max-w-full max-h-full object-contain p-0.5" />
+          ) : (
+            <span className="text-xs text-gray-900 px-1 truncate font-medium">{value}</span>
+          )}
         </div>
       ) : (
         <div
