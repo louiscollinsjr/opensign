@@ -37,6 +37,7 @@ export default function EnvelopeBuilder() {
   const [pdfDims, setPdfDims] = useState({ width: 0, height: 0 });
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [resending, setResending] = useState(false);
   const [signingLinks, setSigningLinks] = useState([]); // populated after send
   const [copiedId, setCopiedId] = useState(null); // tracks which link was just copied
   const [newRecipient, setNewRecipient] = useState({ name: '', email: '' });
@@ -110,14 +111,21 @@ export default function EnvelopeBuilder() {
   async function handleSave() {
     setSaving(true);
     try {
-      const savedRecipients = await api.envelopes.saveRecipients(id, recipients.map((r, i) => ({
-        name: r.name, email: r.email, order: i,
-      })));
-      setRecipients(savedRecipients);
-      const oldToNew = {};
-      recipients.forEach((r, i) => { if (savedRecipients[i]) oldToNew[r._id] = savedRecipients[i]._id; });
+      let recipientIdMap = {};
+
+      if (envelope.status === 'draft') {
+        // In draft: replace recipients (this regenerates tokens, which is fine pre-send)
+        const savedRecipients = await api.envelopes.saveRecipients(id, recipients.map((r, i) => ({
+          name: r.name, email: r.email, order: i,
+        })));
+        setRecipients(savedRecipients);
+        recipients.forEach((r, i) => { if (savedRecipients[i]) recipientIdMap[r._id] = savedRecipients[i]._id; });
+      }
+      // After send: skip saveRecipients to preserve existing tokens/signing links.
+      // Fields are still saved so layout changes are reflected.
+
       await api.envelopes.saveFields(id, fields.map((f) => ({
-        recipientId: oldToNew[f.recipientId] || f.recipientId,
+        recipientId: recipientIdMap[f.recipientId] || f.recipientId,
         page: f.page,
         x: f.x,
         y: f.y,
@@ -154,6 +162,33 @@ export default function EnvelopeBuilder() {
       toast.error(err.message);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleResend() {
+    if (recipients.length === 0) return toast.error('No recipients');
+    setResending(true);
+    try {
+      // Save field layout without touching recipients/tokens
+      await api.envelopes.saveFields(id, fields.map((f) => ({
+        recipientId: f.recipientId,
+        page: f.page, x: f.x, y: f.y,
+        width: f.width, height: f.height,
+        type: f.type, required: f.required,
+      })));
+      // Re-send emails to all pending recipients
+      const result = await api.envelopes.send(id);
+      const { links } = await api.envelopes.links(id);
+      setSigningLinks(links);
+      if (result.emailErrors?.length) {
+        toast.warning(`Resent, but ${result.emailErrors.length} email(s) failed — use Copy Link below`);
+      } else {
+        toast.success('Emails resent!');
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setResending(false);
     }
   }
 
@@ -202,14 +237,31 @@ export default function EnvelopeBuilder() {
       >
         {saving ? 'Saving…' : 'Save'}
       </button>
-      <button
-        onClick={handleSend}
-        disabled={sending || envelope.status !== 'draft'}
-        className="inline-flex items-center gap-1.5 bg-black text-white rounded-md px-3 py-1.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
-      >
-        <Send size={13} />
-        {sending ? 'Sending…' : envelope.status === 'draft' ? 'Send' : 'Sent'}
-      </button>
+      {envelope.status === 'draft' ? (
+        <button
+          onClick={handleSend}
+          disabled={sending}
+          className="inline-flex items-center gap-1.5 bg-black text-white rounded-md px-3 py-1.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+        >
+          <Send size={13} />
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+      ) : envelope.status === 'sent' ? (
+        <button
+          onClick={handleResend}
+          disabled={resending}
+          className="inline-flex items-center gap-1.5 bg-gray-700 text-white rounded-md px-3 py-1.5 text-sm font-medium hover:bg-gray-600 disabled:opacity-50 transition-colors"
+          title="Re-send invitation emails to all recipients"
+        >
+          <Send size={13} />
+          {resending ? 'Resending…' : 'Resend'}
+        </button>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 rounded-md px-3 py-1.5 text-sm font-medium">
+          <Send size={13} />
+          Completed
+        </span>
+      )}
     </div>
   );
 

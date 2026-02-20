@@ -159,8 +159,9 @@ router.post('/:id/send', async (req, res) => {
   try {
     const envelope = await Envelope.findOne({ _id: req.params.id, ownerId: req.userId });
     if (!envelope) return res.status(404).json({ error: 'Not found' });
-    if (envelope.status !== 'draft') {
-      return res.status(400).json({ error: 'Envelope already sent' });
+    // Allow resend when status is 'sent' (e.g. if email failed). Block only 'completed'.
+    if (envelope.status === 'completed') {
+      return res.status(400).json({ error: 'Envelope is already completed' });
     }
     if (!envelope.pdfUrl) {
       return res.status(400).json({ error: 'No PDF uploaded yet' });
@@ -169,9 +170,13 @@ router.post('/:id/send', async (req, res) => {
     if (!recipients.length) {
       return res.status(400).json({ error: 'No recipients added' });
     }
-    const baseUrl = process.env.FRONTEND_URL || 'https://opensign.atem.gdn';
+    // On resend, only email recipients who haven't signed yet
+    const pendingRecipients = envelope.status === 'sent'
+      ? recipients.filter((r) => r.status !== 'signed')
+      : recipients;
+    const baseUrl = process.env.FRONTEND_URL || 'https://opensign-app.vercel.app';
     const emailErrors = [];
-    for (const recipient of recipients) {
+    for (const recipient of pendingRecipients) {
       const signingUrl = `${baseUrl}/sign/${recipient.token}`;
       try {
         const result = await sendSigningInvite({
@@ -216,7 +221,7 @@ router.get('/:id/links', async (req, res) => {
       return res.status(400).json({ error: 'Document has not been sent yet' });
     }
     const recipients = await Recipient.find({ envelopeId: envelope._id }).sort({ order: 1 });
-    const baseUrl = process.env.FRONTEND_URL || 'https://opensign.atem.gdn';
+    const baseUrl = process.env.FRONTEND_URL || 'https://opensign-app.vercel.app';
     const links = recipients.map((r) => ({
       recipientId: r._id,
       name: r.name,
