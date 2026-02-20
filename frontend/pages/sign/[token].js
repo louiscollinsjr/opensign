@@ -196,41 +196,11 @@ function FieldLabel({ type, required }) {
   );
 }
 
-// The "Sign Here" sticky-note tab — sits at the left edge of the field, slightly below top
-function SignHereTab({ label }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: 0,
-        bottom: '-1.6em',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '3px',
-        background: '#1d4ed8',      // blue-700
-        borderRadius: '0 0 4px 4px',
-        padding: '1px 6px 2px 4px',
-        pointerEvents: 'none',
-        userSelect: 'none',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-        zIndex: 30,
-      }}
-    >
-      {/* yellow arrow pointing up */}
-      <span style={{ color: '#fde047', fontSize: '10px', lineHeight: 1, fontWeight: 900 }}>▲</span>
-      <span style={{ color: '#fde047', fontSize: '9px', fontWeight: 700, letterSpacing: '0.03em' }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
 function SignerFieldOverlay({ field, value, onChange }) {
   const [showInput, setShowInput] = useState(false);
   const isSignature = field.type === 'signature' || field.type === 'initials';
   const isDataUrl = value && value.startsWith('data:');
-
-  const tabLabel = isSignature ? 'Sign here' : `Enter ${field.type}`;
+  const bandLabel = isSignature ? 'Sign here' : `Enter ${field.type}`;
 
   return (
     <>
@@ -248,7 +218,7 @@ function SignerFieldOverlay({ field, value, onChange }) {
         <FieldLabel type={field.type} required={field.required} />
 
         {value ? (
-          /* Filled state — solid border, show the value */
+          /* Filled state — solid border, value displayed */
           <div
             onClick={() => setShowInput(true)}
             style={{
@@ -269,24 +239,39 @@ function SignerFieldOverlay({ field, value, onChange }) {
             )}
           </div>
         ) : (
-          /* Empty state — dashed blue border, semi-transparent, with sticky tab */
+          /* Empty state: transparent top area + solid blue bottom band inside the border */
           <div
             onClick={() => setShowInput(true)}
             style={{
               width: '100%', height: '100%',
-              border: '2px dashed #3b82f6',
+              border: '1.5px dashed #3b82f6',
               borderRadius: '3px',
-              background: 'rgba(219,234,254,0.45)',  // blue-100 at 45% — PDF text shows through
-              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+              background: 'rgba(219,234,254,0.30)',
+              display: 'flex', flexDirection: 'column',
               cursor: 'pointer',
-              padding: '1px 4px',
+              overflow: 'hidden',
               boxSizing: 'border-box',
-              transition: 'background 0.15s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(191,219,254,0.65)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(219,234,254,0.45)'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(191,219,254,0.45)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(219,234,254,0.30)'; }}
           >
-            <SignHereTab label={tabLabel} />
+            {/* Top area — transparent so PDF text shows through */}
+            <div style={{ flex: 1 }} />
+            {/* Bottom band — solid blue, aligns its bottom edge with the PDF signature line */}
+            <div style={{
+              flexShrink: 0,
+              height: '40%',
+              minHeight: '14px',
+              maxHeight: '22px',
+              background: '#1d4ed8',
+              display: 'flex', alignItems: 'center',
+              paddingLeft: '5px', gap: '3px',
+            }}>
+              <span style={{ color: '#fde047', fontSize: '9px', lineHeight: 1, fontWeight: 900 }}>▲</span>
+              <span style={{ color: '#fde047', fontSize: '9px', fontWeight: 700, letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+                {bandLabel}
+              </span>
+            </div>
           </div>
         )}
       </div>

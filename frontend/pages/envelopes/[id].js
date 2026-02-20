@@ -534,7 +534,7 @@ function FieldBox({ field, selected, onSelect, onRemove, onUpdate, recipient }) 
   }
 
   const isSignature = field.type === 'signature' || field.type === 'initials';
-  const tabLabel = isSignature ? 'Sign here' : `Enter ${field.type}`;
+  const bandLabel = isSignature ? 'Sign here' : `Enter ${field.type}`;
 
   return (
     <div
@@ -568,36 +568,37 @@ function FieldBox({ field, selected, onSelect, onRemove, onUpdate, recipient }) 
         {field.type}{recipient ? ` · ${recipient.name}` : ''}
       </span>
 
-      {/* Field body — dashed blue border, semi-transparent fill */}
+      {/* Field body: transparent top + solid blue bottom band */}
       <div style={{
         width: '100%',
         height: '100%',
-        border: selected ? '2px solid #1e3a8a' : '2px dashed #3b82f6',
+        border: selected ? '2px solid #1e3a8a' : '1.5px dashed #3b82f6',
         borderRadius: '3px',
-        background: selected ? 'rgba(191,219,254,0.55)' : 'rgba(219,234,254,0.40)',
+        background: 'transparent',
         boxShadow: selected ? '0 0 0 2px #1e3a8a33' : 'none',
-        transition: 'border 0.1s, background 0.1s',
-        position: 'relative',
+        transition: 'border 0.1s',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
         boxSizing: 'border-box',
+        pointerEvents: 'none',
       }}>
-        {/* "Sign here" sticky tab at bottom-left */}
+        {/* Top: transparent so PDF text shows through */}
+        <div style={{ flex: 1 }} />
+        {/* Bottom band: solid blue with yellow "Sign here" text */}
         <div style={{
-          position: 'absolute',
-          left: 0,
-          bottom: '-1.6em',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '3px',
+          flexShrink: 0,
+          height: '40%',
+          minHeight: '14px',
+          maxHeight: '22px',
           background: selected ? '#1e3a8a' : '#1d4ed8',
-          borderRadius: '0 0 4px 4px',
-          padding: '1px 6px 2px 4px',
-          pointerEvents: 'none',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-          zIndex: 21,
+          display: 'flex', alignItems: 'center',
+          paddingLeft: '5px', gap: '3px',
+          transition: 'background 0.1s',
         }}>
-          <span style={{ color: '#fde047', fontSize: '10px', lineHeight: 1, fontWeight: 900 }}>▲</span>
-          <span style={{ color: '#fde047', fontSize: '9px', fontWeight: 700, letterSpacing: '0.03em' }}>
-            {tabLabel}
+          <span style={{ color: '#fde047', fontSize: '9px', lineHeight: 1, fontWeight: 900 }}>▲</span>
+          <span style={{ color: '#fde047', fontSize: '9px', fontWeight: 700, letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+            {bandLabel}
           </span>
         </div>
       </div>
