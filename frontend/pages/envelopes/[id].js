@@ -533,6 +533,9 @@ function FieldBox({ field, selected, onSelect, onRemove, onUpdate, recipient }) 
     window.addEventListener('mouseup', onMouseUp);
   }
 
+  const isSignature = field.type === 'signature' || field.type === 'initials';
+  const tabLabel = isSignature ? 'Sign here' : `Enter ${field.type}`;
+
   return (
     <div
       ref={parentRef}
@@ -546,17 +549,84 @@ function FieldBox({ field, selected, onSelect, onRemove, onUpdate, recipient }) 
         height: `${field.height * 100}%`,
         zIndex: 20,
         cursor: 'move',
+        userSelect: 'none',
       }}
-      className={`border-2 rounded flex items-center justify-center select-none ${FIELD_COLORS[field.type] || 'border-gray-400 bg-gray-400/5'} ${selected ? 'ring-2 ring-gray-900 ring-offset-1' : ''}`}
     >
-      <span className="text-[10px] font-medium text-gray-700 px-1 truncate capitalize">
+      {/* Left-justified label above — type · recipient */}
+      <span style={{
+        position: 'absolute',
+        top: '-1.15em',
+        left: 0,
+        fontSize: '9px',
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        color: selected ? '#1e3a8a' : '#1e40af',
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+      }}>
         {field.type}{recipient ? ` · ${recipient.name}` : ''}
       </span>
+
+      {/* Field body — dashed blue border, semi-transparent fill */}
+      <div style={{
+        width: '100%',
+        height: '100%',
+        border: selected ? '2px solid #1e3a8a' : '2px dashed #3b82f6',
+        borderRadius: '3px',
+        background: selected ? 'rgba(191,219,254,0.55)' : 'rgba(219,234,254,0.40)',
+        boxShadow: selected ? '0 0 0 2px #1e3a8a33' : 'none',
+        transition: 'border 0.1s, background 0.1s',
+        position: 'relative',
+        boxSizing: 'border-box',
+      }}>
+        {/* "Sign here" sticky tab at bottom-left */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          bottom: '-1.6em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '3px',
+          background: selected ? '#1e3a8a' : '#1d4ed8',
+          borderRadius: '0 0 4px 4px',
+          padding: '1px 6px 2px 4px',
+          pointerEvents: 'none',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          zIndex: 21,
+        }}>
+          <span style={{ color: '#fde047', fontSize: '10px', lineHeight: 1, fontWeight: 900 }}>▲</span>
+          <span style={{ color: '#fde047', fontSize: '9px', fontWeight: 700, letterSpacing: '0.03em' }}>
+            {tabLabel}
+          </span>
+        </div>
+      </div>
+
+      {/* Remove button when selected */}
       {selected && (
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="absolute -top-2 -right-2 w-4 h-4 bg-gray-900 text-white rounded-full flex items-center justify-center text-[9px] hover:bg-red-600 transition-colors"
+          style={{
+            position: 'absolute',
+            top: '-8px',
+            right: '-8px',
+            width: '16px',
+            height: '16px',
+            background: '#111827',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '10px',
+            cursor: 'pointer',
+            zIndex: 25,
+            lineHeight: 1,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#dc2626'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#111827'; }}
         >
           ×
         </button>

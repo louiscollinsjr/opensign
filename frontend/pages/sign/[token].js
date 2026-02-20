@@ -173,43 +173,125 @@ export default function SignPage() {
   );
 }
 
+// Label shown above the field — left-justified, small, muted
+function FieldLabel({ type, required }) {
+  return (
+    <span
+      style={{
+        position: 'absolute',
+        top: '-1.15em',
+        left: 0,
+        fontSize: '9px',
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        color: '#1e40af',          // blue-800
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    >
+      {type}{required ? ' *' : ''}
+    </span>
+  );
+}
+
+// The "Sign Here" sticky-note tab — sits at the left edge of the field, slightly below top
+function SignHereTab({ label }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        bottom: '-1.6em',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '3px',
+        background: '#1d4ed8',      // blue-700
+        borderRadius: '0 0 4px 4px',
+        padding: '1px 6px 2px 4px',
+        pointerEvents: 'none',
+        userSelect: 'none',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        zIndex: 30,
+      }}
+    >
+      {/* yellow arrow pointing up */}
+      <span style={{ color: '#fde047', fontSize: '10px', lineHeight: 1, fontWeight: 900 }}>▲</span>
+      <span style={{ color: '#fde047', fontSize: '9px', fontWeight: 700, letterSpacing: '0.03em' }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function SignerFieldOverlay({ field, value, onChange }) {
   const [showInput, setShowInput] = useState(false);
   const isSignature = field.type === 'signature' || field.type === 'initials';
   const isDataUrl = value && value.startsWith('data:');
 
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: `${field.x * 100}%`,
-        top: `${field.y * 100}%`,
-        width: `${field.width * 100}%`,
-        height: `${field.height * 100}%`,
-        zIndex: 20,
-      }}
-    >
-      {value ? (
-        <div
-          onClick={() => setShowInput(true)}
-          className="w-full h-full border-2 border-gray-900 bg-white rounded flex items-center justify-center cursor-pointer hover:bg-gray-50 overflow-hidden"
-        >
-          {isDataUrl ? (
-            // Render drawn signatures/initials as an image
-            <img src={value} alt={field.type} className="max-w-full max-h-full object-contain p-0.5" />
-          ) : (
-            <span className="text-xs text-gray-900 px-1 truncate font-medium">{value}</span>
-          )}
-        </div>
-      ) : (
-        <div
-          onClick={() => setShowInput(true)}
-          className="w-full h-full border-2 border-dashed border-gray-400 bg-white/80 rounded flex items-center justify-center cursor-pointer hover:border-gray-900 hover:bg-gray-50 transition-colors"
-        >
-          <span className="text-[10px] text-gray-500 capitalize">{field.type}{field.required ? ' *' : ''}</span>
-        </div>
-      )}
+  const tabLabel = isSignature ? 'Sign here' : `Enter ${field.type}`;
 
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          left: `${field.x * 100}%`,
+          top: `${field.y * 100}%`,
+          width: `${field.width * 100}%`,
+          height: `${field.height * 100}%`,
+          zIndex: 20,
+        }}
+      >
+        {/* Left-justified type label above the field */}
+        <FieldLabel type={field.type} required={field.required} />
+
+        {value ? (
+          /* Filled state — solid border, show the value */
+          <div
+            onClick={() => setShowInput(true)}
+            style={{
+              width: '100%', height: '100%',
+              border: '2px solid #1e3a8a',
+              borderRadius: '3px',
+              background: 'rgba(255,255,255,0.92)',
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+              cursor: 'pointer',
+              overflow: 'hidden',
+              padding: '1px 4px',
+            }}
+          >
+            {isDataUrl ? (
+              <img src={value} alt={field.type} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+            ) : (
+              <span style={{ fontSize: '11px', color: '#111827', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+            )}
+          </div>
+        ) : (
+          /* Empty state — dashed blue border, semi-transparent, with sticky tab */
+          <div
+            onClick={() => setShowInput(true)}
+            style={{
+              width: '100%', height: '100%',
+              border: '2px dashed #3b82f6',
+              borderRadius: '3px',
+              background: 'rgba(219,234,254,0.45)',  // blue-100 at 45% — PDF text shows through
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+              cursor: 'pointer',
+              padding: '1px 4px',
+              boxSizing: 'border-box',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(191,219,254,0.65)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(219,234,254,0.45)'; }}
+          >
+            <SignHereTab label={tabLabel} />
+          </div>
+        )}
+      </div>
+
+      {/* Modal is portalled outside the field div so z-index is never clipped */}
       {showInput && (
         <FieldInputModal
           field={field}
@@ -218,7 +300,7 @@ function SignerFieldOverlay({ field, value, onChange }) {
           onClose={() => setShowInput(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -274,8 +356,8 @@ function FieldInputModal({ field, value, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg border border-gray-200 p-5 w-80 shadow-lg" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center" style={{ zIndex: 9999 }} onClick={onClose}>
+      <div className="bg-white rounded-lg border border-gray-200 p-5 w-80 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-gray-900 mb-3 capitalize">{field.type}</h3>
 
         {isSignature ? (
